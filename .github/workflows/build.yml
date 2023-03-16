@@ -1,0 +1,23 @@
+name: Build
+
+on:
+  push:
+    branches: [ latest ]
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+
+jobs:
+  build-and-deploy:
+    name: Build Docker Image
+    uses: appital/shared-github-workflows/.github/workflows/docker-build-push.yml@main
+    with:
+      image: europe-west1-docker.pkg.dev/prj-bldr-c-book-ops-9bbe/jitaccess-images/jitaccess
+      workloadIdentityProvider: projects/767032747466/locations/global/workloadIdentityPools/ops-artifact-writer-pool-3305/providers/ops-artifact-writer-provider-330
+      serviceAccount: sa-ops-artifact-writer@prj-bldr-c-book-ops-9bbe.iam.gserviceaccount.com
+      dockerTag: latest
+    secrets:
+      workflowAppID: ${{ secrets.WATA_APPLICATION_ID }}
+      workflowAppKey: ${{ secrets.WATA_APPLICATION_PRIVATE_KEY }}
