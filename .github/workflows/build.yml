@@ -5,19 +5,58 @@ on:
     branches: [ latest ]
 
 permissions:
-  contents: write
-  packages: write
-  id-token: write
+  contents: 'read'
+  id-token: 'write'
 
 jobs:
-  build-and-deploy:
-    name: Build Docker Image
-    uses: appital/shared-github-workflows/.github/workflows/docker-build-push.yml@main
-    with:
-      image: europe-west1-docker.pkg.dev/prj-bldr-c-book-ops-9bbe/jitaccess-images/jitaccess
-      workloadIdentityProvider: projects/767032747466/locations/global/workloadIdentityPools/ops-artifact-writer-pool-3305/providers/ops-artifact-writer-provider-330
-      serviceAccount: sa-ops-artifact-writer@prj-bldr-c-book-ops-9bbe.iam.gserviceaccount.com
-      dockerTag: latest
-    secrets:
-      workflowAppID: ${{ secrets.WATA_APPLICATION_ID }}
-      workflowAppKey: ${{ secrets.WATA_APPLICATION_PRIVATE_KEY }}
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - id: auth
+        name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v0
+        with:
+          token_format: access_token
+          workload_identity_provider: projects/767032747466/locations/global/workloadIdentityPools/ops-artifact-writer-pool-3305/providers/ops-artifact-writer-provider-330
+          service_account: sa-ops-artifact-writer@prj-bldr-c-book-ops-9bbe.iam.gserviceaccount.com
+
+      - name: Login to Artifact Registry
+        uses: docker/login-action@v2
+        with:
+          registry: europe-west1-docker.pkg.dev
+          username: oauth2accesstoken
+          password: ${{ steps.auth.outputs.access_token }}
+
+      - name: Build and export to Docker
+        uses: docker/build-push-action@v3
+        with:
+          context: "{{defaultContext}}:sources"
+          tags: europe-west1-docker.pkg.dev/prj-bldr-c-book-ops-9bbe/jitaccess-images/jitaccess:test
+          load: true
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: europe-west1-docker.pkg.dev/prj-bldr-c-book-ops-9bbe/jitaccess-images/jitaccess:test
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          severity: 'CRITICAL'
+
+      - name: Set Docker metadata
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: europe-west1-docker.pkg.dev/prj-bldr-c-book-ops-9bbe/jitaccess-images/jitaccess
+          tags: |
+            latest
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: "{{defaultContext}}:sources"
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
