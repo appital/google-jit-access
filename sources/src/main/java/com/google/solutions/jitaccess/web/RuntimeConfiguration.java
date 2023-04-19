@@ -59,9 +59,15 @@ public class RuntimeConfiguration {
     this.justificationHint = new StringSetting(
       List.of("JUSTIFICATION_HINT"),
       "Bug or case number");
+    this.minNumberOfReviewersPerActivationRequest = new IntSetting(
+      List.of("ACTIVATION_REQUEST_MIN_REVIEWERS"),
+      1);
+    this.maxNumberOfReviewersPerActivationRequest = new IntSetting(
+      List.of("ACTIVATION_REQUEST_MAX_REVIEWERS"),
+      10);
     
     //
-    // Backend service id
+    // Backend service id (Cloud Run only).
     //
     this.backendServiceId = new StringSetting(List.of("IAP_BACKEND_SERVICE_ID"), null);
 
@@ -80,6 +86,7 @@ public class RuntimeConfiguration {
     this.smtpSenderAddress = new StringSetting(List.of("SMTP_SENDER_ADDRESS"), null);
     this.smtpUsername = new StringSetting(List.of("SMTP_USERNAME"), null);
     this.smtpPassword = new StringSetting(List.of("SMTP_PASSWORD"), null);
+    this.smtpSecret = new StringSetting(List.of("SMTP_SECRET"), null);
     this.smtpExtraOptions = new StringSetting(List.of("SMTP_OPTIONS"), null);
   }
 
@@ -155,6 +162,14 @@ public class RuntimeConfiguration {
   public final StringSetting smtpPassword;
 
   /**
+   * Path to a SecretManager secret that contains the SMTP password.
+   * For Gmail, this should be an application-specific password.
+   *
+   * The path must be in the format projects/x/secrets/y/versions/z.
+   */
+  public final StringSetting smtpSecret;
+
+  /**
    * Extra JavaMail options.
    */
   public final StringSetting smtpExtraOptions;
@@ -164,14 +179,24 @@ public class RuntimeConfiguration {
    */
   public final StringSetting backendServiceId;
 
+  /**
+   * Minimum number of reviewers foa an activation request.
+   */
+  public final IntSetting minNumberOfReviewersPerActivationRequest;
+
+  /**
+   * Maximum number of reviewers foa an activation request.
+   */
+  public final IntSetting maxNumberOfReviewersPerActivationRequest;
+
   public boolean isSmtpConfigured() {
     var requiredSettings = List.of(smtpHost, smtpPort, smtpSenderName, smtpSenderAddress);
     return requiredSettings.stream().allMatch(s -> s.isValid());
   }
 
   public boolean isSmtpAuthenticationConfigured() {
-    var requiredSettings = List.of(smtpUsername, smtpPassword);
-    return requiredSettings.stream().allMatch(s -> s.isValid());
+    return this.smtpUsername.isValid() &&
+      (this.smtpPassword.isValid() || this.smtpSecret.isValid());
   }
 
   public Map<String, String> getSmtpExtraOptionsMap() {

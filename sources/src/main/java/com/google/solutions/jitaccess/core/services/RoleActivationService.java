@@ -84,9 +84,19 @@ public class RoleActivationService {
     RoleBinding roleBinding,
     ActivationType activationType
   ) throws AccessException, IOException {
+    //
+    // Check if the given role is among the roles that the
+    // user is eligible to JIT-/MPA-activate.
+    //
+    // NB. It doesn't matter whether the user has already
+    // activated the role.
+    //
     if (this.roleDiscoveryService.listEligibleProjectRoles(
         user,
-        ProjectId.fromFullResourceName(roleBinding.fullResourceName))
+        ProjectId.fromFullResourceName(roleBinding.fullResourceName),
+        EnumSet.of(
+          ProjectRole.Status.ELIGIBLE_FOR_JIT,
+          ProjectRole.Status.ELIGIBLE_FOR_MPA))
       .getItems()
       .stream()
       .filter(pr -> pr.roleBinding.equals(roleBinding))
@@ -122,12 +132,17 @@ public class RoleActivationService {
   public Activation activateProjectRoleForSelf(
     UserId caller,
     RoleBinding roleBinding,
-    String justification
+    String justification,
+    Duration activationTimeout
   ) throws AccessException, AlreadyExistsException, IOException {
     Preconditions.checkNotNull(caller, "caller");
     Preconditions.checkNotNull(roleBinding, "roleBinding");
     Preconditions.checkNotNull(justification, "justification");
     Preconditions.checkArgument(ProjectId.isProjectFullResourceName(roleBinding.fullResourceName));
+    Preconditions.checkArgument(activationTimeout.toMinutes() >= Options.MIN_ACTIVATION_TIMEOUT_MINUTES,
+      "The activation timeout is too short");
+    Preconditions.checkArgument(activationTimeout.toMinutes() <= this.options.maxActivationTimeout.toMinutes(),
+      "The requested activation timeout exceeds the maximum permitted timeout");
 
     //
     // Check that the justification looks reasonable.
@@ -156,7 +171,7 @@ public class RoleActivationService {
     //
 
     var activationTime = Instant.now();
-    var expiryTime = activationTime.plus(this.options.activationDuration);
+    var expiryTime = activationTime.plus(activationTimeout);
     var bindingDescription = String.format(
       "Self-approved, justification: %s",
       justification);
@@ -214,18 +229,10 @@ public class RoleActivationService {
       request.roleBinding,
       ActivationType.MPA);
 
-    try {
-      checkUserCanActivateProjectRole(
-        request.beneficiary,
-        request.roleBinding,
-        ActivationType.MPA);
-    }
-    catch (AccessDeniedException e) {
-      throw new AccessDeniedException(
-        String.format(
-          "The request has been approved already, or the user %s is no longer allowed to activate the role",
-          request.beneficiary));
-    }
+    checkUserCanActivateProjectRole(
+      request.beneficiary,
+      request.roleBinding,
+      ActivationType.MPA);
 
     //
     // Add time-bound IAM binding for the beneficiary.
@@ -275,7 +282,8 @@ public class RoleActivationService {
     UserId callerAndBeneficiary,
     Set<UserId> reviewers,
     RoleBinding roleBinding,
-    String justification
+    String justification,
+    Duration activationTimeout
   ) throws AccessException, IOException {
     Preconditions.checkNotNull(callerAndBeneficiary, "callerAndBeneficiary");
     Preconditions.checkNotNull(reviewers, "reviewers");
@@ -283,8 +291,15 @@ public class RoleActivationService {
     Preconditions.checkNotNull(justification, "justification");
 
     Preconditions.checkArgument(ProjectId.isProjectFullResourceName(roleBinding.fullResourceName));
-    Preconditions.checkArgument(!reviewers.isEmpty(), "At least one reviewer must be provided");
+    Preconditions.checkArgument(reviewers != null && reviewers.size() >= this.options.minNumberOfReviewersPerActivationRequest,
+      "At least " + this.options.minNumberOfReviewersPerActivationRequest + " reviewers must be specified");
+    Preconditions.checkArgument(reviewers.size() <= this.options.maxNumberOfReviewersPerActivationRequest,
+      "The number of reviewers must not exceed " + this.options.maxNumberOfReviewersPerActivationRequest);
     Preconditions.checkArgument(!reviewers.contains(callerAndBeneficiary), "The beneficiary cannot be a reviewer");
+    Preconditions.checkArgument(activationTimeout.toMinutes() >= Options.MIN_ACTIVATION_TIMEOUT_MINUTES,
+      "The activation timeout is too short");
+    Preconditions.checkArgument(activationTimeout.toMinutes() <= this.options.maxActivationTimeout.toMinutes(),
+      "The requested activation timeout exceeds the maximum permitted timeout");
 
     //
     // Check that the justification looks reasonable.
@@ -304,7 +319,7 @@ public class RoleActivationService {
     // Issue an activation request.
     //
     var startTime = Instant.now();
-    var endTime = startTime.plus(this.options.activationDuration);
+    var endTime = startTime.plus(activationTimeout);
 
     return new ActivationRequest(
       ActivationId.newId(ActivationType.MPA),
@@ -471,17 +486,36 @@ public class RoleActivationService {
   }
 
   public static class Options {
-    public final Duration activationDuration;
+    public static final int MIN_ACTIVATION_TIMEOUT_MINUTES = 5;
+
+    public final Duration maxActivationTimeout;
     public final String justificationHint;
     public final Pattern justificationPattern;
+    public final int minNumberOfReviewersPerActivationRequest;
+    public final int maxNumberOfReviewersPerActivationRequest;
 
     public Options(
       String justificationHint,
       Pattern justificationPattern,
-      Duration activationDuration) {
-      this.activationDuration = activationDuration;
+      Duration maxActivationTimeout,
+      int minNumberOfReviewersPerActivationRequest,
+      int maxNumberOfReviewersPerActivationRequest)
+    {
+      Preconditions.checkArgument(
+        maxActivationTimeout.toMinutes() >= MIN_ACTIVATION_TIMEOUT_MINUTES,
+        "Activation timeout must be at least 5 minutes");
+      Preconditions.checkArgument(
+        minNumberOfReviewersPerActivationRequest > 0,
+        "The minimum number of reviewers cannot be 0");
+      Preconditions.checkArgument(
+        minNumberOfReviewersPerActivationRequest <= maxNumberOfReviewersPerActivationRequest,
+        "The minimum number of reviewers must not exceed the maximum");
+
+      this.maxActivationTimeout = maxActivationTimeout;
       this.justificationHint = justificationHint;
       this.justificationPattern = justificationPattern;
+      this.minNumberOfReviewersPerActivationRequest = minNumberOfReviewersPerActivationRequest;
+      this.maxNumberOfReviewersPerActivationRequest = maxNumberOfReviewersPerActivationRequest;
     }
   }
 }

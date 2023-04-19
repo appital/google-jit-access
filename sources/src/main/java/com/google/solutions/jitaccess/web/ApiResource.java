@@ -41,6 +41,7 @@ import javax.ws.rs.core.SecurityContext;
 import javax.ws.rs.core.UriInfo;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -130,10 +131,12 @@ public class ApiResource {
   ) {
     var iapPrincipal = (UserPrincipal) securityContext.getUserPrincipal();
 
+    var options = this.roleActivationService.getOptions();
     return new PolicyResponse(
-      this.roleActivationService.getOptions().justificationHint,
-      iapPrincipal.getId()
-    );
+      options.justificationHint,
+      iapPrincipal.getId(),
+      (int)options.maxActivationTimeout.toMinutes(),
+      Math.min(60, (int)options.maxActivationTimeout.toMinutes()));
   }
 
   /**
@@ -296,7 +299,8 @@ public class ApiResource {
         var activation = this.roleActivationService.activateProjectRoleForSelf(
           iapPrincipal.getId(),
           roleBinding,
-          request.justification);
+          request.justification,
+          Duration.ofMinutes(request.activationTimeout));
 
         assert activation != null;
         activations.add(activation);
@@ -369,6 +373,9 @@ public class ApiResource {
     assert this.activationTokenService != null;
     assert this.notificationService != null;
 
+    var minReviewers = this.roleActivationService.getOptions().minNumberOfReviewersPerActivationRequest;
+    var maxReviewers = this.roleActivationService.getOptions().maxNumberOfReviewersPerActivationRequest;
+
     Preconditions.checkArgument(
       projectIdString != null && !projectIdString.trim().isEmpty(),
       "A projectId is required");
@@ -377,8 +384,11 @@ public class ApiResource {
       request.role != null && !request.role.isEmpty(),
       "A role is required");
     Preconditions.checkArgument(
-      request.peers != null && request.peers.size() > 0 && request.peers.size() <= 10,
-      "At least one peer is required");
+      request.peers != null && request.peers.size() >= minReviewers,
+      "At least " + minReviewers + " reviewers are required");
+    Preconditions.checkArgument(
+      request.peers.size() <= maxReviewers,
+      "The number of reviewers must not exceed " + maxReviewers);
     Preconditions.checkArgument(
       request.justification != null && request.justification.length() > 0 && request.justification.length() < 100,
       "A justification must be provided");
@@ -400,7 +410,8 @@ public class ApiResource {
         iapPrincipal.getId(),
         request.peers.stream().map(email -> new UserId(email)).collect(Collectors.toSet()),
         roleBinding,
-        request.justification);
+        request.justification,
+        Duration.ofMinutes(request.activationTimeout));
 
       //
       // Create an approval token and pass it to reviewers.
@@ -654,16 +665,25 @@ public class ApiResource {
   public static class PolicyResponse {
     public final String justificationHint;
     public final UserId signedInUser;
+    public final int defaultActivationTimeout; // in minutes.
+    public final int maxActivationTimeout;     // in minutes.
 
     private PolicyResponse(
       String justificationHint,
-      UserId signedInUser
+      UserId signedInUser,
+      int maxActivationTimeoutInMinutes,
+      int defaultActivationTimeoutInMinutes
     ) {
       Preconditions.checkNotNull(justificationHint, "justificationHint");
       Preconditions.checkNotNull(signedInUser, "signedInUser");
+      Preconditions.checkArgument(defaultActivationTimeoutInMinutes > 0, "defaultActivationTimeoutInMinutes");
+      Preconditions.checkArgument(maxActivationTimeoutInMinutes > 0, "maxActivationTimeoutInMinutes");
+      Preconditions.checkArgument(maxActivationTimeoutInMinutes >= defaultActivationTimeoutInMinutes, "maxActivationTimeoutInMinutes");
 
       this.justificationHint = justificationHint;
       this.signedInUser = signedInUser;
+      this.defaultActivationTimeout = defaultActivationTimeoutInMinutes;
+      this.maxActivationTimeout = maxActivationTimeoutInMinutes;
     }
   }
 
@@ -703,12 +723,14 @@ public class ApiResource {
   public static class SelfActivationRequest {
     public List<String> roles;
     public String justification;
+    public int activationTimeout; // in minutes.
   }
 
   public static class ActivationRequest {
     public String role;
     public String justification;
     public List<String> peers;
+    public int activationTimeout; // in minutes.
   }
 
   public static class ActivationStatusResponse {
@@ -811,7 +833,6 @@ public class ApiResource {
       URL activationRequestUrl) throws MalformedURLException
     {
       super(
-        NotificationService.Notification.loadMessageTemplate("notifications/RequestActivation.html"),
         request.reviewers,
         List.of(request.beneficiary),
         String.format(
@@ -829,6 +850,11 @@ public class ApiResource {
       this.properties.put("BASE_URL", new URL(activationRequestUrl, "/").toString());
       this.properties.put("ACTION_URL", activationRequestUrl.toString());
     }
+
+    @Override
+    public String getTemplateId() {
+      return "RequestActivation";
+    }
   }
 
   /**
@@ -841,7 +867,6 @@ public class ApiResource {
       URL activationRequestUrl) throws MalformedURLException
     {
       super(
-        NotificationService.Notification.loadMessageTemplate("notifications/ActivationApproved.html"),
         List.of(request.beneficiary),
         request.reviewers, // Move reviewers to CC.
         String.format(
@@ -862,6 +887,11 @@ public class ApiResource {
     @Override
     protected boolean isReply() {
       return true;
+    }
+
+    @Override
+    public String getTemplateId() {
+      return "ActivationApproved";
     }
   }
 }
