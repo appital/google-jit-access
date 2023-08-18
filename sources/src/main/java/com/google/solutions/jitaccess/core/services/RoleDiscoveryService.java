@@ -32,7 +32,7 @@ import com.google.solutions.jitaccess.core.data.ProjectRole;
 import com.google.solutions.jitaccess.core.data.RoleBinding;
 import com.google.solutions.jitaccess.core.data.UserId;
 
-import javax.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.context.ApplicationScoped;
 import java.io.IOException;
 import java.util.*;
 import java.util.function.Predicate;
@@ -283,7 +283,7 @@ public class RoleDiscoveryService {
       Stream.ofNullable(analysisResult.getNonCriticalErrors())
         .flatMap(Collection::stream)
         .map(e -> e.getCause())
-        .collect(Collectors.toList()));
+        .collect(Collectors.toSet()));
   }
 
   /**

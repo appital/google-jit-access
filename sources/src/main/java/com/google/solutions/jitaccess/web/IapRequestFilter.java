@@ -28,15 +28,15 @@ import com.google.solutions.jitaccess.core.data.DeviceInfo;
 import com.google.solutions.jitaccess.core.data.UserId;
 import com.google.solutions.jitaccess.core.data.UserPrincipal;
 
-import javax.annotation.Priority;
-import javax.enterprise.context.Dependent;
-import javax.inject.Inject;
-import javax.ws.rs.ForbiddenException;
-import javax.ws.rs.Priorities;
-import javax.ws.rs.container.ContainerRequestContext;
-import javax.ws.rs.container.ContainerRequestFilter;
-import javax.ws.rs.core.SecurityContext;
-import javax.ws.rs.ext.Provider;
+import jakarta.annotation.Priority;
+import jakarta.enterprise.context.Dependent;
+import jakarta.inject.Inject;
+import jakarta.ws.rs.ForbiddenException;
+import jakarta.ws.rs.Priorities;
+import jakarta.ws.rs.container.ContainerRequestContext;
+import jakarta.ws.rs.container.ContainerRequestFilter;
+import jakarta.ws.rs.core.SecurityContext;
+import jakarta.ws.rs.ext.Provider;
 import java.security.Principal;
 
 /**
@@ -88,6 +88,10 @@ public class IapRequestFilter implements ContainerRequestFilter {
 
     String assertion = requestContext.getHeaderString(IAP_ASSERTION_HEADER);
     if (assertion == null) {
+      this.log
+        .newErrorEntry(EVENT_AUTHENTICATE, "Missing IAP assertion in header, IAP might be disabled")
+        .write();
+
       throw new ForbiddenException("Identity-Aware Proxy must be enabled for this application");
     }
 
@@ -121,6 +125,16 @@ public class IapRequestFilter implements ContainerRequestFilter {
       };
     }
     catch (TokenVerifier.VerificationException | IllegalArgumentException e) {
+      this.log
+        .newErrorEntry(
+          EVENT_AUTHENTICATE,
+          String.format(
+            "Verifying IAP assertion failed. This might be because the " +
+            "IAP assertion was tampered with, or because it had the wrong audience " +
+            "(expected audience: %s).", expectedAudience),
+          e)
+        .write();
+
       throw new ForbiddenException("Invalid IAP assertion", e);
     }
   }

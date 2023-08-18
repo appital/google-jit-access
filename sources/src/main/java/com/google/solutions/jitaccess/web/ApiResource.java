@@ -24,6 +24,7 @@ package com.google.solutions.jitaccess.web;
 import com.google.common.base.Preconditions;
 import com.google.solutions.jitaccess.core.AccessDeniedException;
 import com.google.solutions.jitaccess.core.AccessException;
+import com.google.solutions.jitaccess.core.ApplicationVersion;
 import com.google.solutions.jitaccess.core.Exceptions;
 import com.google.solutions.jitaccess.core.adapters.LogAdapter;
 import com.google.solutions.jitaccess.core.data.*;
@@ -32,13 +33,13 @@ import com.google.solutions.jitaccess.core.services.NotificationService;
 import com.google.solutions.jitaccess.core.services.RoleActivationService;
 import com.google.solutions.jitaccess.core.services.RoleDiscoveryService;
 
-import javax.enterprise.context.Dependent;
-import javax.inject.Inject;
-import javax.ws.rs.*;
-import javax.ws.rs.core.Context;
-import javax.ws.rs.core.MediaType;
-import javax.ws.rs.core.SecurityContext;
-import javax.ws.rs.core.UriInfo;
+import jakarta.enterprise.context.Dependent;
+import jakarta.inject.Inject;
+import jakarta.ws.rs.*;
+import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.SecurityContext;
+import jakarta.ws.rs.core.UriInfo;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.time.Duration;
@@ -74,6 +75,9 @@ public class ApiResource {
 
   @Inject
   LogAdapter logAdapter;
+
+  @Inject
+  Options options;
 
   private URL createActivationRequestUrl(
     UriInfo uriInfo,
@@ -135,6 +139,7 @@ public class ApiResource {
     return new PolicyResponse(
       options.justificationHint,
       iapPrincipal.getId(),
+      ApplicationVersion.VERSION_STRING,
       (int)options.maxActivationTimeout.toMinutes(),
       Math.min(60, (int)options.maxActivationTimeout.toMinutes()));
   }
@@ -274,13 +279,21 @@ public class ApiResource {
 
     Preconditions.checkArgument(
       projectIdString != null && !projectIdString.trim().isEmpty(),
-      "A projectId is required");
+      "You must provide a projectId");
     Preconditions.checkArgument(
-      request != null && request.roles != null && request.roles.size() > 0 && request.roles.size() <= 10,
-      "At least one role is required");
+      request != null && request.roles != null && request.roles.size() > 0,
+      "Specify one or more roles to activate");
     Preconditions.checkArgument(
-      request.justification != null && request.justification.length() > 0 && request.justification.length() < 100,
-      "A justification must be provided");
+      request != null && request.roles != null && request.roles.size() <= this.options.maxNumberOfJitRolesPerSelfApproval,
+      String.format(
+        "The number of roles exceeds the allowed maximum of %d",
+        this.options.maxNumberOfJitRolesPerSelfApproval));
+    Preconditions.checkArgument(
+      request.justification != null && request.justification.trim().length() > 0,
+      "Provide a justification");
+    Preconditions.checkArgument(
+      request.justification != null && request.justification.length() < 100,
+      "The justification is too long");
 
     var iapPrincipal = (UserPrincipal) securityContext.getUserPrincipal();
     var projectId = new ProjectId(projectIdString);
@@ -378,20 +391,23 @@ public class ApiResource {
 
     Preconditions.checkArgument(
       projectIdString != null && !projectIdString.trim().isEmpty(),
-      "A projectId is required");
+      "You must provide a projectId");
     Preconditions.checkArgument(request != null);
     Preconditions.checkArgument(
       request.role != null && !request.role.isEmpty(),
-      "A role is required");
+      "Specify a role to activate");
     Preconditions.checkArgument(
       request.peers != null && request.peers.size() >= minReviewers,
-      "At least " + minReviewers + " reviewers are required");
+      String.format("You must select at least %d reviewers", minReviewers));
     Preconditions.checkArgument(
       request.peers.size() <= maxReviewers,
-      "The number of reviewers must not exceed " + maxReviewers);
+      String.format("The number of reviewers exceeds the allowed maximum of %d", maxReviewers));
     Preconditions.checkArgument(
-      request.justification != null && request.justification.length() > 0 && request.justification.length() < 100,
-      "A justification must be provided");
+      request.justification != null && request.justification.trim().length() > 0,
+      "Provide a justification");
+    Preconditions.checkArgument(
+      request.justification != null && request.justification.length() < 100,
+      "The justification is too long");
 
     Preconditions.checkState(
       this.notificationService.canSendNotifications() || this.runtimeEnvironment.isDebugModeEnabled(),
@@ -665,12 +681,14 @@ public class ApiResource {
   public static class PolicyResponse {
     public final String justificationHint;
     public final UserId signedInUser;
+    public String applicationVersion;
     public final int defaultActivationTimeout; // in minutes.
     public final int maxActivationTimeout;     // in minutes.
 
     private PolicyResponse(
       String justificationHint,
       UserId signedInUser,
+      String applicationVersion,
       int maxActivationTimeoutInMinutes,
       int defaultActivationTimeoutInMinutes
     ) {
@@ -682,6 +700,7 @@ public class ApiResource {
 
       this.justificationHint = justificationHint;
       this.signedInUser = signedInUser;
+      this.applicationVersion = applicationVersion;
       this.defaultActivationTimeout = defaultActivationTimeoutInMinutes;
       this.maxActivationTimeout = maxActivationTimeoutInMinutes;
     }
@@ -697,12 +716,12 @@ public class ApiResource {
   }
 
   public static class ProjectRolesResponse {
-    public final List<String> warnings;
+    public final Set<String> warnings;
     public final List<ProjectRole> roles;
 
     private ProjectRolesResponse(
       List<ProjectRole> roleBindings,
-      List<String> warnings
+      Set<String> warnings
     ) {
       Preconditions.checkNotNull(roleBindings, "roleBindings");
 
@@ -892,6 +911,24 @@ public class ApiResource {
     @Override
     public String getTemplateId() {
       return "ActivationApproved";
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Options.
+  // -------------------------------------------------------------------------
+
+  public static class Options {
+    public final int maxNumberOfJitRolesPerSelfApproval;
+
+    public Options(
+      int maxNumberOfJitRolesPerSelfApproval
+    ) {
+      Preconditions.checkArgument(
+        maxNumberOfJitRolesPerSelfApproval > 0,
+        "The maximum number of JIT roles per self-approval must exceed 1");
+
+      this.maxNumberOfJitRolesPerSelfApproval = maxNumberOfJitRolesPerSelfApproval;
     }
   }
 }

@@ -31,7 +31,7 @@ import com.google.common.base.Preconditions;
 import com.google.solutions.jitaccess.core.*;
 import com.google.solutions.jitaccess.core.data.ProjectId;
 
-import javax.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.context.ApplicationScoped;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
 import java.util.EnumSet;
@@ -66,6 +66,12 @@ public class ResourceManagerAdapter {
     catch (GeneralSecurityException e) {
       throw new IOException("Creating a ResourceManager client failed", e);
     }
+  }
+
+  private static boolean isRoleNotGrantableErrorMessage(String message)
+  {
+    return message != null &&
+      (message.contains("not supported") || message.contains("does not exist"));
   }
 
   public ResourceManagerAdapter(GoogleCredentials credentials) {
@@ -190,6 +196,20 @@ public class ResourceManagerAdapter {
     }
     catch (GoogleJsonResponseException e) {
       switch (e.getStatusCode()) {
+        case 400:
+          //
+          // One possible reason for an INVALID_ARGUMENT error is that we've tried
+          // to grant a role on a project that cannot be granted on a project at all.
+          // If that's the case, provide a more descriptive error message.
+          //
+          if (e.getDetails() != null &&
+              e.getDetails().getErrors() != null &&
+              e.getDetails().getErrors().size() > 0 &&
+              isRoleNotGrantableErrorMessage(e.getDetails().getErrors().get(0).getMessage())) {
+            throw new AccessDeniedException(
+              String.format("The role %s cannot be granted on a project", binding.getRole()),
+              e);
+          }
         case 401:
           throw new NotAuthenticatedException("Not authenticated", e);
         case 403:
