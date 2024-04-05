@@ -21,20 +21,32 @@
 
 package com.google.solutions.jitaccess.web;
 
+import com.google.solutions.jitaccess.core.clients.*;
+import org.jetbrains.annotations.NotNull;
+
 import java.time.Duration;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.function.Function;
 
-public class RuntimeConfiguration {
+class RuntimeConfiguration {
+  enum Catalog {
+    /**
+     * Use Policy Analyzer API. Requires an SCC subscription.
+     */
+    POLICYANALYZER,
+
+    /**
+     * Use Asset Inventory API.
+     */
+    ASSETINVENTORY
+  }
+
   private final Function<String, String> readSetting;
 
-  public RuntimeConfiguration(Map<String, String> settings) {
+  public RuntimeConfiguration(@NotNull Map<String, String> settings) {
     this(key -> settings.get(key));
   }
 
@@ -44,6 +56,13 @@ public class RuntimeConfiguration {
     this.scope = new StringSetting(
       List.of("RESOURCE_SCOPE"),
       String.format("projects/%s", this.readSetting.apply("GOOGLE_CLOUD_PROJECT")));
+    this.customerId = new StringSetting(
+      List.of("RESOURCE_CUSTOMER_ID"),
+      null);
+    this.catalog = new EnumSetting<Catalog>(
+      Catalog.class,
+      List.of("RESOURCE_CATALOG"),
+      Catalog.POLICYANALYZER);
 
     //
     // Activation settings.
@@ -68,12 +87,14 @@ public class RuntimeConfiguration {
     this.maxNumberOfReviewersPerActivationRequest = new IntSetting(
       List.of("ACTIVATION_REQUEST_MAX_REVIEWERS"),
       10);
-    this.maxNumberOfJitRolesPerSelfApproval = new IntSetting(
+    this.maxNumberOfEntitlementsPerSelfApproval = new IntSetting(
       List.of("ACTIVATION_REQUEST_MAX_ROLES"),
       10);
     this.availableProjectsQuery = new StringSetting(
       List.of("AVAILABLE_PROJECTS_QUERY"),
-      null);
+      this.catalog.getValue() == Catalog.ASSETINVENTORY
+        ? "state:ACTIVE"
+        : null);
 
     //
     // Backend service id (Cloud Run only).
@@ -89,6 +110,7 @@ public class RuntimeConfiguration {
     //
     // SMTP settings.
     //
+    this.smtpAddressMapping = new StringSetting(List.of("SMTP_ADDRESS_MAPPING"), "");
     this.smtpHost = new StringSetting(List.of("SMTP_HOST"), "smtp.gmail.com");
     this.smtpPort = new IntSetting(List.of("SMTP_PORT"), 587);
     this.smtpEnableStartTls = new BooleanSetting(List.of("SMTP_ENABLE_STARTTLS"), true);
@@ -124,75 +146,90 @@ public class RuntimeConfiguration {
    * Scope (within the resource hierarchy) that this application manages
    * access for.
    */
-  public final StringSetting scope;
+  public final @NotNull StringSetting scope;
+
+  /**
+   * Cloud Identity/Workspace customer ID.
+   */
+  public final @NotNull StringSetting customerId;
+
+  /**
+   * Catalog implementation to use.
+   */
+  public final @NotNull EnumSetting<Catalog> catalog;
 
   /**
    * Topic (within the resource hierarchy) that binding information will
    * publish to.
    */
-  public final StringSetting topicName;
+  public final @NotNull StringSetting topicName;
 
 
   /**
    * Duration for which an activated role remains activated.
    */
-  public final DurationSetting activationTimeout;
+  public final @NotNull DurationSetting activationTimeout;
 
   /**
    * Time allotted for reviewers to approve an activation request.
    */
-  public final DurationSetting activationRequestTimeout;
+  public final @NotNull DurationSetting activationRequestTimeout;
 
   /**
    * Regular expression that justifications must satisfy.
    */
-  public final StringSetting justificationPattern;
+  public final @NotNull StringSetting justificationPattern;
 
   /**
    * Hint (or description) for users indicating what kind of justification they
    * need to supply.
    */
-  public final StringSetting justificationHint;
+  public final @NotNull StringSetting justificationHint;
 
   /**
    * Zone to apply to dates when sending notifications.
    */
-  public final ZoneIdSetting timeZoneForNotifications;
+  public final @NotNull ZoneIdSetting timeZoneForNotifications;
+
+  /**
+   * CEL expression for mapping userIDs to email addresses.
+   */
+  public final @NotNull StringSetting smtpAddressMapping;
 
   /**
    * SMTP server for sending notifications.
    */
-  public final StringSetting smtpHost;
+  public final @NotNull StringSetting smtpHost;
 
   /**
    * SMTP port for sending notifications.
    */
-  public final IntSetting smtpPort;
+  public final @NotNull IntSetting smtpPort;
 
   /**
    * Enable StartTLS.
    */
-  public final BooleanSetting smtpEnableStartTls;
+  public final @NotNull BooleanSetting smtpEnableStartTls;
 
   /**
    * Human-readable sender name used for notifications.
    */
-  public final StringSetting smtpSenderName;
+  public final @NotNull StringSetting smtpSenderName;
 
   /**
    * Email address used for notifications.
    */
-  public final StringSetting smtpSenderAddress;
+  public final @NotNull StringSetting smtpSenderAddress;
 
   /**
    * SMTP username.
    */
-  public final StringSetting smtpUsername;
+  public final @NotNull StringSetting smtpUsername;
 
   /**
    * SMTP password. For Gmail, this should be an application-specific password.
    */
-  public final StringSetting smtpPassword;
+  public final @NotNull StringSetting smtpPassword;
 
   /**
    * Path to a SecretManager secret that contains the SMTP password.
@@ -200,32 +237,32 @@ public class RuntimeConfiguration {
    *
    * The path must be in the format projects/x/secrets/y/versions/z.
    */
-  public final StringSetting smtpSecret;
+  public final @NotNull StringSetting smtpSecret;
 
   /**
    * Extra JavaMail options.
    */
-  public final StringSetting smtpExtraOptions;
+  public final @NotNull StringSetting smtpExtraOptions;
 
   /**
    * Backend Service Id for token validation
    */
-  public final StringSetting backendServiceId;
+  public final @NotNull StringSetting backendServiceId;
 
   /**
    * Minimum number of reviewers foa an activation request.
    */
-  public final IntSetting minNumberOfReviewersPerActivationRequest;
+  public final @NotNull IntSetting minNumberOfReviewersPerActivationRequest;
 
   /**
    * Maximum number of reviewers foa an activation request.
    */
-  public final IntSetting maxNumberOfReviewersPerActivationRequest;
+  public final @NotNull IntSetting maxNumberOfReviewersPerActivationRequest;
 
   /**
-   * Maximum number of (JIT-) eligible roles that can be activated at once.
+   * Maximum number of (JIT-) entitlements that can be activated at once.
    */
-  public final IntSetting maxNumberOfJitRolesPerSelfApproval;
+  public final @NotNull IntSetting maxNumberOfEntitlementsPerSelfApproval;
 
   /**
    * In some cases listing all available projects is not working fast enough and times out,
@@ -234,22 +271,22 @@ public class RuntimeConfiguration {
    * - parent:folders/{folder_id}
    * - parent:organizations/{organization_id}
    */
-  public final StringSetting availableProjectsQuery;
+  public final @NotNull StringSetting availableProjectsQuery;
 
   /**
    * Connect timeout for HTTP requests to backends.
    */
-  public final DurationSetting backendConnectTimeout;
+  public final @NotNull DurationSetting backendConnectTimeout;
 
   /**
    * Read timeout for HTTP requests to backends.
    */
-  public final DurationSetting backendReadTimeout;
+  public final @NotNull DurationSetting backendReadTimeout;
 
   /**
    * Write timeout for HTTP requests to backends.
    */
-  public final DurationSetting backendWriteTimeout;
+  public final @NotNull DurationSetting backendWriteTimeout;
 
   public boolean isSmtpConfigured() {
     var requiredSettings = List.of(smtpHost, smtpPort, smtpSenderName, smtpSenderAddress);
@@ -261,7 +298,7 @@ public class RuntimeConfiguration {
       (this.smtpPassword.isValid() || this.smtpSecret.isValid());
   }
 
-  public Map<String, String> getSmtpExtraOptionsMap() {
+  public @NotNull Map<String, String> getSmtpExtraOptionsMap() {
     var map = new HashMap<String, String>();
 
     if (this.smtpExtraOptions.isValid()) {
@@ -274,6 +311,22 @@ public class RuntimeConfiguration {
     }
 
     return map;
+  }
+
+  public @NotNull Set<String> getRequiredOauthScopes() {
+    var scopes = new HashSet<String>();
+
+    scopes.add(ResourceManagerClient.OAUTH_SCOPE);
+    scopes.add(PolicyAnalyzerClient.OAUTH_SCOPE);
+    scopes.add(AssetInventoryClient.OAUTH_SCOPE);
+    scopes.add(IamCredentialsClient.OAUTH_SCOPE);
+    scopes.add(SecretManagerClient.OAUTH_SCOPE);
+
+    if (this.catalog.getValue() == RuntimeConfiguration.Catalog.ASSETINVENTORY) {
+      scopes.add(DirectoryGroupsClient.OAUTH_SCOPE);
+    }
+
+    return scopes;
   }
 
   // -------------------------------------------------------------------------
@@ -338,7 +391,7 @@ public class RuntimeConfiguration {
     }
 
     @Override
-    protected Integer parse(String value) {
+    protected @NotNull Integer parse(@NotNull String value) {
       return Integer.parseInt(value);
     }
   }
@@ -349,7 +402,7 @@ public class RuntimeConfiguration {
     }
 
     @Override
-    protected Boolean parse(String value) {
+    protected @NotNull Boolean parse(String value) {
       return Boolean.parseBoolean(value);
     }
   }
@@ -362,7 +415,7 @@ public class RuntimeConfiguration {
     }
 
     @Override
-    protected Duration parse(String value) {
+    protected Duration parse(@NotNull String value) {
       return Duration.of(Integer.parseInt(value), this.unit);
     }
   }
@@ -373,8 +426,26 @@ public class RuntimeConfiguration {
     }
 
     @Override
-    protected ZoneId parse(String value) {
+    protected @NotNull ZoneId parse(@NotNull String value) {
       return ZoneId.of(value);
+    }
+  }
+
+  public class EnumSetting<E extends Enum<E>> extends Setting<E> {
+    private final Class<E> enumClass;
+
+    public EnumSetting(
+      Class<E> enumClass,
+      Collection<String> keys,
+      E defaultValue
+    ) {
+      super(keys, defaultValue);
+      this.enumClass = enumClass;
+    }
+
+    @Override
+    protected @NotNull E parse(@NotNull String value) {
+      return E.valueOf(this.enumClass, value.trim().toUpperCase());
     }
   }
 }

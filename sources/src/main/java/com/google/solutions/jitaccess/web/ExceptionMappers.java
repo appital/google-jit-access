@@ -21,10 +21,9 @@
 
 package com.google.solutions.jitaccess.web;
 
-import com.google.solutions.jitaccess.core.AccessDeniedException;
+import com.google.solutions.jitaccess.core.AccessException;
 import com.google.solutions.jitaccess.core.NotAuthenticatedException;
-import org.jboss.resteasy.spi.UnhandledException;
-
+import com.google.solutions.jitaccess.core.ResourceNotFoundException;
 import jakarta.ws.rs.ForbiddenException;
 import jakarta.ws.rs.NotAcceptableException;
 import jakarta.ws.rs.NotAllowedException;
@@ -32,12 +31,16 @@ import jakarta.ws.rs.NotFoundException;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.ext.ExceptionMapper;
 import jakarta.ws.rs.ext.Provider;
+import org.jboss.resteasy.spi.UnhandledException;
+import org.jetbrains.annotations.NotNull;
+
 import java.io.IOException;
 
 public class ExceptionMappers {
   public static final Class<?>[] ALL = new Class<?>[] {
     NotAuthenticatedExceptionMapper.class,
-    AccessDeniedExceptionExceptionMapper.class,
+    ResourceNotFoundExceptionMapper.class,
+    AccessExceptionMapper.class,
     ForbiddenExceptionMapper.class,
     IllegalArgumentExceptionMapper.class,
     IllegalStateExceptionMapper.class,
@@ -53,7 +56,7 @@ public class ExceptionMappers {
   public static class NotAuthenticatedExceptionMapper
     implements ExceptionMapper<NotAuthenticatedException> {
     @Override
-    public Response toResponse(NotAuthenticatedException exception) {
+    public Response toResponse(@NotNull NotAuthenticatedException exception) {
       return Response
         .status(Response.Status.UNAUTHORIZED)
         .entity(new ErrorEntity(exception)).build();
@@ -61,10 +64,10 @@ public class ExceptionMappers {
   }
 
   @Provider
-  public static class AccessDeniedExceptionExceptionMapper
-    implements ExceptionMapper<AccessDeniedException> {
+  public static class AccessExceptionMapper
+    implements ExceptionMapper<AccessException> {
     @Override
-    public Response toResponse(AccessDeniedException exception) {
+    public Response toResponse(@NotNull AccessException exception) {
       return Response
         .status(Response.Status.FORBIDDEN)
         .entity(new ErrorEntity(exception)).build();
@@ -72,9 +75,20 @@ public class ExceptionMappers {
   }
 
   @Provider
+  public static class ResourceNotFoundExceptionMapper
+    implements ExceptionMapper<ResourceNotFoundException> {
+    @Override
+    public Response toResponse(@NotNull ResourceNotFoundException exception) {
+      return Response
+        .status(Response.Status.NOT_FOUND)
+        .entity(new ErrorEntity(exception)).build();
+    }
+  }
+
+  @Provider
   public static class ForbiddenExceptionMapper implements ExceptionMapper<ForbiddenException> {
     @Override
-    public Response toResponse(ForbiddenException exception) {
+    public Response toResponse(@NotNull ForbiddenException exception) {
       return Response
         .status(Response.Status.FORBIDDEN)
         .entity(new ErrorEntity(exception)).build();
@@ -84,7 +98,7 @@ public class ExceptionMappers {
   @Provider
   public static class IllegalArgumentExceptionMapper implements ExceptionMapper<IllegalArgumentException> {
     @Override
-    public Response toResponse(IllegalArgumentException exception) {
+    public Response toResponse(@NotNull IllegalArgumentException exception) {
       return Response
         .status(Response.Status.BAD_REQUEST)
         .entity(new ErrorEntity(exception))
@@ -95,7 +109,7 @@ public class ExceptionMappers {
   @Provider
   public static class IllegalStateExceptionMapper implements ExceptionMapper<IllegalStateException> {
     @Override
-    public Response toResponse(IllegalStateException exception) {
+    public Response toResponse(@NotNull IllegalStateException exception) {
       return Response
         .status(Response.Status.INTERNAL_SERVER_ERROR)
         .entity(new ErrorEntity(exception))
@@ -106,7 +120,7 @@ public class ExceptionMappers {
   @Provider
   public static class NullPointerExceptionMapper implements ExceptionMapper<NullPointerException> {
     @Override
-    public Response toResponse(NullPointerException exception) {
+    public Response toResponse(@NotNull NullPointerException exception) {
       return Response
         .status(Response.Status.BAD_REQUEST)
         .entity(new ErrorEntity(exception))
@@ -117,7 +131,7 @@ public class ExceptionMappers {
   @Provider
   public static class IOExceptionMapper implements ExceptionMapper<IOException> {
     @Override
-    public Response toResponse(IOException exception) {
+    public Response toResponse(@NotNull IOException exception) {
       return Response
         .status(Response.Status.BAD_GATEWAY)
         .entity(new ErrorEntity(exception))
@@ -128,7 +142,7 @@ public class ExceptionMappers {
   @Provider
   public static class NotAllowedExceptionMapper implements ExceptionMapper<NotAllowedException> {
     @Override
-    public Response toResponse(NotAllowedException exception) {
+    public Response toResponse(@NotNull NotAllowedException exception) {
       return Response
         .status(Response.Status.METHOD_NOT_ALLOWED)
         .entity(new ErrorEntity(exception))
@@ -139,7 +153,7 @@ public class ExceptionMappers {
   @Provider
   public static class NotAcceptableExceptionMapper implements ExceptionMapper<NotAcceptableException> {
     @Override
-    public Response toResponse(NotAcceptableException exception) {
+    public Response toResponse(@NotNull NotAcceptableException exception) {
       return Response
         .status(Response.Status.NOT_ACCEPTABLE)
         .entity(new ErrorEntity(exception))
@@ -150,7 +164,7 @@ public class ExceptionMappers {
   @Provider
   public static class NotFoundExceptionMapper implements ExceptionMapper<NotFoundException> {
     @Override
-    public Response toResponse(NotFoundException exception) {
+    public Response toResponse(@NotNull NotFoundException exception) {
       return Response
         .status(Response.Status.NOT_FOUND)
         .entity(new ErrorEntity(exception))
@@ -161,7 +175,7 @@ public class ExceptionMappers {
   @Provider
   public static class UnhandledExceptionMapper implements ExceptionMapper<UnhandledException> {
     @Override
-    public Response toResponse(UnhandledException exception) {
+    public Response toResponse(@NotNull UnhandledException exception) {
       return Response
         .status(Response.Status.INTERNAL_SERVER_ERROR)
         .entity(new ErrorEntity(exception))
@@ -172,7 +186,7 @@ public class ExceptionMappers {
   public static class ErrorEntity {
     private final String message;
 
-    public ErrorEntity(Exception exception) {
+    public ErrorEntity(@NotNull Exception exception) {
       this.message = exception.getMessage();
     }
 

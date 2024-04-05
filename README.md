@@ -2,6 +2,8 @@
 
 Just-In-Time Access is an open source application that lets you implement just-in-time privileged access to Google Cloud resources. 
 
+[<img src="doc/documentation.png">](https://googlecloudplatform.github.io/jit-access/)
+
 Just-In-Time Access works by introducing the notion of _eligible role bindings_ to Cloud IAM. Unlike a [regular
 IAM role binding](https://cloud.google.com/iam/docs/overview#cloud-iam-policy), 
 an eligible role binding doesn't grant the user access to a project yet:
@@ -14,8 +16,6 @@ without having to grant them permanent access. This type of just-in-time privile
 * Reduce the risk of someone accidentally modifying or deleting resources. For example, when users have privileged access only when it's needed, it helps prevent them from running scripts at other times that unintentionally affect resources that they shouldn't be able to change.
 * Create an audit trail that indicates why privileges were activated.
 * Conduct audits and reviews for analyzing past activity.
-
-> :memo: **Note:** Just-In-Time Access uses the Policy Analyzer API. Starting January 15, 2024, this API will be subject to [new quota restrictions and might require a Security Command Center subscription](https://cloud.google.com/policy-intelligence/docs/billing-questions#pricing-changes). For further information, see [#193](https://github.com/GoogleCloudPlatform/jit-access/issues/193). 
 
 ## Activate roles on demand
 
@@ -34,7 +34,7 @@ to the project.
 
 
 
-<img src='doc/images/pix.gif' width='100%' height='1'>
+<img src='doc/pix.gif' width='100%' height='1'>
 
 
 ## Request approval to activate a role
@@ -57,7 +57,7 @@ and notifies you via email.
 
 
 
-<img src='doc/images/pix.gif' width='100%' height='1'>
+<img src='doc/pix.gif' width='100%' height='1'>
 
 
 ## Grant access
@@ -75,7 +75,7 @@ You can create the binding for a specific project, or for an entire folder. Inst
 access to individual users, you can also use groups.
 
 
-<img src='doc/images/pix.gif' width='100%' height='1'>
+<img src='doc/pix.gif' width='100%' height='1'>
 
 
 ## Audit access
@@ -92,13 +92,15 @@ For each activation, the Just-In-Time application writes an audit log entry that
 * the project and role for which access was requested
 * the justification provided by the user
 
-<img src='doc/images/pix.gif' width='100%' height='1'>
+<img src='doc/pix.gif' width='100%' height='1'>
 
 
-## Deploying the application
+## Deploy the application
 
 Just-In-Time Access runs on App Engine (standard) and Cloud Run. The application
-is stateless and uses [Identity-Aware-Proxy](https://cloud.google.com/iap/docs/concepts-overview) for authentication and authorization, and the [Policy Analyzer API](https://cloud.google.com/policy-intelligence/docs/analyze-iam-policies) and [IAM API](https://cloud.google.com/iam/docs/reference/rest) to manage access.
+is stateless and uses [Identity-Aware-Proxy](https://cloud.google.com/iap/docs/concepts-overview) for authentication and authorization, 
+and the [Cloud Asset API](https://cloud.google.com/asset-inventory/docs/reference/rest) and 
+[IAM API](https://cloud.google.com/iam/docs/reference/rest) to manage access.
 
 For detailed instructions on deploying Just-In-Time Access, see [Manage just-in-time privileged access to projects ](https://cloud.google.com/architecture/manage-just-in-time-privileged-access-to-project) on the Google Cloud website.
 

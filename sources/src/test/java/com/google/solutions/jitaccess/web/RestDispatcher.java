@@ -22,9 +22,11 @@
 package com.google.solutions.jitaccess.web;
 
 import com.google.gson.Gson;
-import com.google.solutions.jitaccess.core.data.DeviceInfo;
-import com.google.solutions.jitaccess.core.data.UserId;
-import com.google.solutions.jitaccess.core.data.UserPrincipal;
+import com.google.solutions.jitaccess.core.auth.UserId;
+import com.google.solutions.jitaccess.web.iap.DeviceInfo;
+import com.google.solutions.jitaccess.web.iap.IapPrincipal;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.SecurityContext;
 import org.jboss.resteasy.core.SynchronousDispatcher;
 import org.jboss.resteasy.core.SynchronousExecutionContext;
 import org.jboss.resteasy.mock.MockDispatcherFactory;
@@ -32,8 +34,6 @@ import org.jboss.resteasy.mock.MockHttpRequest;
 import org.jboss.resteasy.mock.MockHttpResponse;
 import org.jboss.resteasy.spi.Dispatcher;
 
-import jakarta.ws.rs.core.MediaType;
-import jakarta.ws.rs.core.SecurityContext;
 import java.io.UnsupportedEncodingException;
 import java.net.URISyntaxException;
 import java.security.Principal;
@@ -60,14 +60,19 @@ public class RestDispatcher<TResource> {
       new SecurityContext() {
         @Override
         public Principal getUserPrincipal() {
-          return new UserPrincipal() {
+          return new IapPrincipal() {
             @Override
-            public UserId getId() {
+            public UserId email() {
               return userId;
             }
 
             @Override
-            public DeviceInfo getDevice() {
+            public String subjectId() {
+              return "mock";
+            }
+
+            @Override
+            public DeviceInfo device() {
               return DeviceInfo.UNKNOWN;
             }
 

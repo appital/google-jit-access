@@ -22,8 +22,6 @@
 package com.google.solutions.jitaccess.web;
 
 import com.google.common.base.Preconditions;
-import com.google.solutions.jitaccess.core.adapters.LogAdapter;
-
 import jakarta.annotation.Priority;
 import jakarta.enterprise.context.Dependent;
 import jakarta.inject.Inject;
@@ -31,6 +29,7 @@ import jakarta.ws.rs.Priorities;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ContainerRequestFilter;
 import jakarta.ws.rs.ext.Provider;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * Use AppEngine-specific headers to enrich the log.
@@ -49,7 +48,7 @@ public class TraceContextRequestFilter implements ContainerRequestFilter {
   LogAdapter log;
 
   @Override
-  public void filter(ContainerRequestContext containerRequestContext) {
+  public void filter(@NotNull ContainerRequestContext containerRequestContext) {
     Preconditions.checkNotNull(this.log, "log");
 
     var traceId = containerRequestContext.getHeaderString(TRACE_CONTEXT_HEADER_NAME);

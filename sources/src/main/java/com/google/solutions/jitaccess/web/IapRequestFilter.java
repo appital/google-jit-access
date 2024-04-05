@@ -23,11 +23,10 @@ package com.google.solutions.jitaccess.web;
 
 import com.google.auth.oauth2.TokenVerifier;
 import com.google.common.base.Preconditions;
-import com.google.solutions.jitaccess.core.adapters.LogAdapter;
-import com.google.solutions.jitaccess.core.data.DeviceInfo;
-import com.google.solutions.jitaccess.core.data.UserId;
-import com.google.solutions.jitaccess.core.data.UserPrincipal;
-
+import com.google.solutions.jitaccess.core.auth.UserId;
+import com.google.solutions.jitaccess.web.iap.DeviceInfo;
+import com.google.solutions.jitaccess.web.iap.IapAssertion;
+import com.google.solutions.jitaccess.web.iap.IapPrincipal;
 import jakarta.annotation.Priority;
 import jakarta.enterprise.context.Dependent;
 import jakarta.inject.Inject;
@@ -37,6 +36,8 @@ import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ContainerRequestFilter;
 import jakarta.ws.rs.core.SecurityContext;
 import jakarta.ws.rs.ext.Provider;
+import org.jetbrains.annotations.NotNull;
+
 import java.security.Principal;
 
 /**
@@ -46,6 +47,7 @@ import java.security.Principal;
 @Dependent
 @Provider
 @Priority(Priorities.AUTHENTICATION)
+@RequireIapPrincipal
 public class IapRequestFilter implements ContainerRequestFilter {
   private static final String EVENT_AUTHENTICATE = "iap.authenticate";
 
@@ -72,14 +74,14 @@ public class IapRequestFilter implements ContainerRequestFilter {
     } else {
       return String.format(
         "/projects/%s/global/backendServices/%s",
-        this.runtimeEnvironment.getProjectNumber(), this.runtimeEnvironment.getBackendServiceId().toString()
+        this.runtimeEnvironment.getProjectNumber(), this.runtimeEnvironment.getBackendServiceId()
       );
     }
   }
   /**
    * Authenticate request using IAP assertion.
    */
-  private UserPrincipal authenticateIapRequest(ContainerRequestContext requestContext) {
+  private @NotNull IapPrincipal authenticateIapRequest(@NotNull ContainerRequestContext requestContext) {
     //
     // Read IAP assertion header and validate it.
     //
@@ -107,22 +109,7 @@ public class IapRequestFilter implements ContainerRequestFilter {
       // Associate the token with the request so that controllers
       // can access it.
       //
-      return new UserPrincipal() {
-        @Override
-        public String getName() {
-          return getId().toString();
-        }
-
-        @Override
-        public UserId getId() {
-          return verifiedAssertion.getUserId();
-        }
-
-        @Override
-        public DeviceInfo getDevice() {
-          return verifiedAssertion.getDeviceInfo();
-        }
-      };
+      return verifiedAssertion;
     }
     catch (TokenVerifier.VerificationException | IllegalArgumentException e) {
       this.log
@@ -142,7 +129,7 @@ public class IapRequestFilter implements ContainerRequestFilter {
   /**
    * Pseudo-authenticate request using debug header. Only used in debug mode.
    */
-  private UserPrincipal authenticateDebugRequest(ContainerRequestContext requestContext) {
+  private @NotNull IapPrincipal authenticateDebugRequest(@NotNull ContainerRequestContext requestContext) {
     assert this.runtimeEnvironment.isDebugModeEnabled();
 
     var debugPrincipalName = requestContext.getHeaderString(DEBUG_PRINCIPAL_HEADER);
@@ -150,26 +137,31 @@ public class IapRequestFilter implements ContainerRequestFilter {
       throw new ForbiddenException(DEBUG_PRINCIPAL_HEADER + " not set");
     }
 
-    return new UserPrincipal() {
+    return new IapPrincipal() {
       @Override
-      public String getName() {
+      public @NotNull String getName() {
         return debugPrincipalName;
       }
 
       @Override
-      public UserId getId() {
+      public @NotNull UserId email() {
         return new UserId(debugPrincipalName);
       }
 
       @Override
-      public DeviceInfo getDevice() {
+      public String subjectId() {
+        return "debug";
+      }
+
+      @Override
+      public @NotNull DeviceInfo device() {
         return DeviceInfo.UNKNOWN;
       }
     };
   }
 
   @Override
-  public void filter(ContainerRequestContext requestContext) {
+  public void filter(@NotNull ContainerRequestContext requestContext) {
     Preconditions.checkNotNull(this.log, "log");
     Preconditions.checkNotNull(this.runtimeEnvironment, "runtimeEnvironment");
 
@@ -182,7 +174,7 @@ public class IapRequestFilter implements ContainerRequestFilter {
     requestContext.setSecurityContext(
       new SecurityContext() {
         @Override
-        public Principal getUserPrincipal() {
+        public @NotNull Principal getUserPrincipal() {
           return principal;
         }
 
@@ -197,7 +189,7 @@ public class IapRequestFilter implements ContainerRequestFilter {
         }
 
         @Override
-        public String getAuthenticationScheme() {
+        public @NotNull String getAuthenticationScheme() {
           return "IAP";
         }
       });
